@@ -50,6 +50,7 @@ class Engine
 
         bool processInput();
         bool processOutput();
+        bool resizeAndNormalize(cv::Mat frame, float* gpu_input, const nvinfer1::Dims& dims);
 
         //Engine for inference
         shared_ptr<nvinfer1::ICudaEngine> m_engine;
