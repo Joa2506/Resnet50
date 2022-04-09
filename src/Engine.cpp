@@ -1,4 +1,5 @@
 #include <cuda_runtime.h>
+#include <cuda_runtime_api.h>
 #include <device_launch_parameters.h>
 
 //TRT
@@ -157,8 +158,7 @@ bool Engine::build(string onnxfilename)
 
     cout << "Adding optimization profile..." << endl;
     IOptimizationProfile *defaultProfile = builder->createOptimizationProfile();
-    printf("Hei\n");
-    fflush(stdout);
+
     defaultProfile->setDimensions(inputName, OptProfileSelector::kMIN, Dims4(1, channel, height, width));
     defaultProfile->setDimensions(inputName, OptProfileSelector::kOPT, Dims4(1, channel, height, width));
     defaultProfile->setDimensions(inputName, OptProfileSelector::kMAX, Dims4(1, channel, height, width));
@@ -187,8 +187,16 @@ bool Engine::build(string onnxfilename)
     }
     cout << "Model serialized" << endl;
 
-    /*TODO ADD DLA for Tegra 
-    */
+    /*TODO ADD DLA for Tegra */
+    if(m_config.dlaCore < 0)
+    {
+        cout << "DLA cores have to be zero or a positive integer up to the number of cores on your architecture" << endl; 
+        return false;
+    }
+    if(m_config.dlaCore > 0)
+    {
+
+    }
    
     cout << "Writing serialized model to disk..." << endl;
     //write the engine to disk
@@ -285,20 +293,58 @@ bool Engine::loadNetwork()
     return true;
 }
 
-bool Engine::inference(cv::Mat &image)
+bool Engine::inference(cv::Mat &image, int batchSize)
 {
+    // cv::imshow("img", image);
+    // cv::waitKey(0);
+    vector<nvinfer1::Dims> input_dims;
+    vector<nvinfer1::Dims> output_dims;
+    //void* buffers[m_engine->getNbBindings()]; //Input and output buffers
+    vector<void*>buffers(m_engine->getNbBindings());
+    
+    for (size_t i = 0; i < m_engine->getNbBindings(); ++i)
+    {
+        auto bindingSize = getSizeByDim(m_engine->getBindingDimensions(i)) * batchSize * sizeof(float);
+        cudaMalloc(&buffers[i], bindingSize);
+        // if(m_engine->bindingIsInput(i))
+        // {
+        //     input_dims.emplace_back(m_engine->getBindingDimensions(i));
+        // }
+        // else
+        // {
+        //     output_dims.emplace_back(m_engine->getBindingDimensions(i));
+        // }
+    }
+    // if (input_dims.empty() || output_dims.empty())
+    // {
+    //     std::cerr << "Expect at least one input and one output for network" << endl;
+    //     return false;
+    // }
+
+
+    resizeAndNormalize(image, (float*)buffers[0], m_inputDims);
+    m_context->executeV2(buffers.data());
+    calculateProbability((float*)buffers[1], m_outputDims, batchSize);
+    for (size_t i = 0; i < m_engine->getNbBindings(); i++)
+    {
+        cudaFree(buffers[i]);
+    }
+    
+    return true;
 
 }
 
 bool Engine::resizeAndNormalize(cv::Mat frame, float* gpu_input, const nvinfer1::Dims& dims)
 {
+    printf("Starting pre processing of image\n");
+    
     cv::cuda::GpuMat gpu_frame;
     // upload image to GPU
     gpu_frame.upload(frame);
 
-    auto input_width = dims.d[2];
-    auto input_height = dims.d[1];
-    auto channels = dims.d[0];
+    auto input_width = dims.d[3];
+    auto input_height = dims.d[2];
+    auto channels = dims.d[1];
     auto input_size = cv::Size(input_width, input_height);
     // resize
     cv::cuda::GpuMat resized;
@@ -315,4 +361,63 @@ bool Engine::resizeAndNormalize(cv::Mat frame, float* gpu_input, const nvinfer1:
         chw.emplace_back(cv::cuda::GpuMat(input_size, CV_32FC1, gpu_input + i * input_width * input_height));
     }
     cv::cuda::split(flt_image, chw);
+
+
+    return true;
+}
+
+bool Engine::calculateProbability(float* gpu_output, const nvinfer1::Dims& dims, int batchSize)
+{
+    printf("Reading classes file\n");
+
+    auto classes = getClassNames(RESNET_CLASSNAMES);
+    if(classes.empty())
+    {
+        cout << "Could not read Resnet class file" << endl;
+        return false;
+    }
+    std::vector<float> cpu_output(getSizeByDim(dims) * batchSize);
+    cudaMemcpy(cpu_output.data(), gpu_output, cpu_output.size() * sizeof(float), cudaMemcpyDeviceToHost);
+
+    // calculate softmax
+    std::transform(cpu_output.begin(), cpu_output.end(), cpu_output.begin(), [](float val) {return std::exp(val);});
+    auto sum = std::accumulate(cpu_output.begin(), cpu_output.end(), 0.0);
+    // find top classes predicted by the model
+    std::vector<int> indices(getSizeByDim(dims) * batchSize);
+    std::iota(indices.begin(), indices.end(), 0); // generate sequence 0, 1, 2, 3, ..., 999
+    std::sort(indices.begin(), indices.end(), [&cpu_output](int i1, int i2) {return cpu_output[i1] > cpu_output[i2];});
+    // print results
+    int i = 0;
+    //First is most likely candidate
+    std::cout << "class: " << classes[indices[0]] << endl;
+    std::cout << "class: " << classes[indices[1]] << endl;
+    std::cout << "class: " << classes[indices[2]] << endl;
+
+    return true;
+}
+
+vector<std::string> Engine::getClassNames(const std::string& imagenet_classes)
+{
+    std::ifstream classes_file(imagenet_classes);
+    std::vector<std::string> classes;
+    if (!classes_file.good())
+    {
+        std::cerr << "ERROR: can't read file with classes names.\n";
+        return classes;
+    }
+    std::string class_name;
+    while (std::getline(classes_file, class_name))
+    {
+        classes.push_back(class_name);
+    }
+    return classes;
+}
+size_t Engine::getSizeByDim(const nvinfer1::Dims& dims)
+{
+    size_t size = 1;
+    for (size_t i = 0; i < dims.nbDims; ++i)
+    {
+        size *= dims.d[i];
+    }
+    return size;
 }

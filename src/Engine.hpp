@@ -19,7 +19,7 @@
 using namespace std;
 
 #define RESNET "/usr/src/tensorrt/data/resnet50/ResNet50.onnx"
-#define RESNET_CLASSNAMES "/usr/src/tensorrt/data/resnet50/"
+#define RESNET_CLASSNAMES "/usr/src/tensorrt/data/resnet50/class_labels.txt"
 
 struct Configurations {
     //Using 16 point floats for inference
@@ -29,7 +29,7 @@ struct Configurations {
     //Batch size for optimization
     vector<int32_t> optBatchSize;
     // Maximum allowed batch size
-    int32_t maxBatchSize = 16;
+    int32_t maxBatchSize = 1;
     //Max GPU memory allowed for the model.
     long int maxWorkspaceSize = 400000000;//
     //GPU device index number, might be useful for more Tegras in the future
@@ -48,9 +48,14 @@ class Engine
 
         string serializeEngineName(const Configurations& config);
 
-        bool processInput();
-        bool processOutput();
+        //This function takes in the frame and resizes it to fit the Resnet50 model. It also normalizes the image
         bool resizeAndNormalize(cv::Mat frame, float* gpu_input, const nvinfer1::Dims& dims);
+        size_t getSizeByDim(const nvinfer1::Dims& dims);
+        //This function calculates the softmax to find the most probable classes for the image
+        bool calculateProbability(float* gpu_output, const nvinfer1::Dims& dims, int batchSize);
+
+        //Gets the class name from the file that is associated with the image
+        vector<std::string> getClassNames(const std::string& imagenet_classes);
 
         //Engine for inference
         shared_ptr<nvinfer1::ICudaEngine> m_engine;
@@ -84,7 +89,7 @@ class Engine
     public:
         bool build(string onnxfilename);
         bool loadNetwork();
-        bool inference(cv::Mat &image);
+        bool inference(cv::Mat &img, int batchSize);
 
         Engine(const Configurations& config);
         ~Engine();
