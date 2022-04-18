@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "Logger.hpp"
+#include "common.hpp"
 #include <cuda_runtime.h>
 
 #include <opencv2/imgcodecs.hpp>
@@ -21,23 +22,7 @@ using namespace std;
 #define RESNET "/usr/src/tensorrt/data/resnet50/ResNet50.onnx"
 #define RESNET_CLASSNAMES "/usr/src/tensorrt/data/resnet50/class_labels.txt"
 
-struct Configurations {
-    //Using 16 point floats for inference
-    bool FP16 = false;
-    //Using int8
-    bool INT8 = false;
-    //Batch size for optimization
-    vector<int32_t> optBatchSize;
-    // Maximum allowed batch size
-    int32_t maxBatchSize = 1;
-    //Max GPU memory allowed for the model.
-    long int maxWorkspaceSize = 400000000;//
-    //GPU device index number, might be useful for more Tegras in the future
-    int deviceIndex = 0;
-    // DLA
-    int dlaCore = 0;
 
-};
 
 class Engine
 {

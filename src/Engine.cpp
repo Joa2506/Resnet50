@@ -44,7 +44,7 @@ string Engine::serializeEngineName(const Configurations& config)
     {
         name += ".fp32";
     }
-    name += "." + to_string(config.maxBatchSize); + ".";
+    name += ".b" + to_string(config.maxBatchSize); + ".";
     for (int i = 0; i < config.optBatchSize.size(); ++i)
     {
         name += to_string(config.optBatchSize[i]);
@@ -54,8 +54,8 @@ string Engine::serializeEngineName(const Configurations& config)
         } 
     }
 
+    name += ".dla" + to_string(config.dlaCore);
     name += "." + to_string(config.maxWorkspaceSize);
-    
     printf("Serialed engine name...\n");
     fflush(stdout);
 
