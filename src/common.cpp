@@ -1,5 +1,6 @@
 #include "common.hpp"
 
+//Prints some simple guidelines
 void print_help()
 {
     printf("Help meny\n");
@@ -9,13 +10,14 @@ void print_help()
     exit(2);
 }
 
+//Sets the precision added by the user. Make sure only on presicion can be available at a time
 void set_precision(char* optargs, Configurations &config)
 {
     int ret;
     char fp16[5] = "fp16";
     char fp32[5] = "fp32";
     char int8[5] = "int8";
-    printf("Hei");
+
     if(strncmp(optargs, fp16, 4) == 0)
     {
         config.FP16 = true;
@@ -38,6 +40,7 @@ void set_precision(char* optargs, Configurations &config)
         exit(2);
     }
 }
+//Sets the number of dla cores to be run by the engine
 void set_dla(int cores, Configurations &config)
 {
     if(cores == 1)
