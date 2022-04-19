@@ -47,17 +47,13 @@ void set_dla(int cores, Configurations &config)
     {
         config.dlaCore = 1;
     }
-    else if(cores == 2)
-    {
-        config.dlaCore = 2;
-    }
     else if(cores == 0)
     {
         config.dlaCore = 0;
     }
     else
     {
-        printf("DLA has to be from 0 to 2\n");
+        printf("DLA has to be from 0 to 1\n");
         exit(2);
     }
 }

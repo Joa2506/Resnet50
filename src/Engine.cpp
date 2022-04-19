@@ -59,7 +59,10 @@ string Engine::serializeEngineName(const Configurations& config)
         } 
     }
 
-    name += ".dla" + to_string(config.dlaCore);
+    if(m_config.dlaCore == 0 || m_config.dlaCore == 1)
+    {
+        name += ".dla" + to_string(config.dlaCore);
+    }
     name += "." + to_string(config.maxWorkspaceSize);
     printf("Serialed engine name...\n");
     fflush(stdout);
@@ -170,8 +173,6 @@ bool Engine::build(string onnxfilename)
     config->addOptimizationProfile(defaultProfile);
 
     cout << "Optimization profile added" << endl;
-    cout << "Setting max workspace size..." << endl;
-    config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, m_config.maxWorkspaceSize);
 
     if(m_config.FP16)
     {
@@ -183,16 +184,24 @@ bool Engine::build(string onnxfilename)
     }
 
     //DLA does not support dynamic dimensions. Thus, for wildcard dimensions, the min, max, and opt values of the profile must be equal. Check optimization profile
-    if(m_config.dlaCore != 0)
+    if((m_config.dlaCore == 0 || m_config.dlaCore == 1 ) && (m_config.FP16 || m_config.INT8))
     {
-        if(m_config.dlaCore > 2 || m_config.dlaCore < 0)
-        {
-            cout << "Architecture does not allow more than two DLAs" << endl;
-            return false;
-        }
+        
         config->setFlag(BuilderFlag::kGPU_FALLBACK);
         config->setDefaultDeviceType(DeviceType::kDLA);
+        if(m_config.dlaCore == 1)
+        {
+            config->setDLACore(0);
+        }
+        if(m_config.dlaCore == 1)
+        {
+            config->setDLACore(1);
+        }
+
     }
+
+    cout << "Setting max workspace size..." << endl;
+    config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, m_config.maxWorkspaceSize);
 
     cout << "Builder configured successfully" << endl;
     cout << "Making cuda stream..." << endl;
@@ -215,15 +224,7 @@ bool Engine::build(string onnxfilename)
     cout << "Model serialized" << endl;
 
     /*TODO ADD DLA for Tegra */
-    if(m_config.dlaCore < 0)
-    {
-        cout << "DLA cores have to be zero or a positive integer up to the number of cores on your architecture" << endl; 
-        return false;
-    }
-    if(m_config.dlaCore > 0)
-    {
 
-    }
    
     cout << "Writing serialized model to disk..." << endl;
     //write the engine to disk
@@ -293,12 +294,12 @@ bool Engine::loadNetwork()
     m_inputHeight = m_inputDims.d[2];
     m_inputWidth = m_inputDims.d[3];
     
-    printf("m_inputname == %s\n", m_inputName);
-    printf("m_outputname == %s\n", m_outputName);
-    printf("m_batchSize == %d\n", m_batchSize);
-    printf("m_inputChannel == %d\n", m_inputChannel);
-    printf("m_inputHeight == %d\n", m_inputHeight);
-    printf("m_inputWidth == %d\n", m_inputWidth);
+    // printf("m_inputname == %s\n", m_inputName);
+    // printf("m_outputname == %s\n", m_outputName);
+    // printf("m_batchSize == %d\n", m_batchSize);
+    // printf("m_inputChannel == %d\n", m_inputChannel);
+    // printf("m_inputHeight == %d\n", m_inputHeight);
+    // printf("m_inputWidth == %d\n", m_inputWidth);
 
     cout << "Creating execution context..." << endl;
     m_context = shared_ptr<nvinfer1::IExecutionContext>(m_engine->createExecutionContext());
@@ -332,7 +333,7 @@ bool Engine::inference(cv::Mat &image, int batchSize)
     for (size_t i = 0; i < m_engine->getNbBindings(); ++i)
     {
         auto bindingSize = getSizeByDim(m_engine->getBindingDimensions(i)) * batchSize * sizeof(float);
-        cudaMalloc(&buffers[i], bindingSize);
+        cudaMallocAsync(&buffers[i], bindingSize,m_cudaStream);
         // if(m_engine->bindingIsInput(i))
         // {
         //     input_dims.emplace_back(m_engine->getBindingDimensions(i));
@@ -350,13 +351,18 @@ bool Engine::inference(cv::Mat &image, int batchSize)
 
 
     resizeAndNormalize(image, (float*)buffers[0], m_inputDims);
-    m_context->executeV2(buffers.data());
+    m_context->enqueueV2(buffers.data(), m_cudaStream, nullptr);
     calculateProbability((float*)buffers[1], m_outputDims, batchSize);
     for (size_t i = 0; i < m_engine->getNbBindings(); i++)
     {
-        cudaFree(buffers[i]);
+        cudaFreeAsync(buffers[i], m_cudaStream);
     }
-    
+    auto status = cudaStreamSynchronize(m_cudaStream);
+    if(status != 0)
+    {
+        std::cout << "Unable to synchronize cuda stream" << std::endl;
+        return false;
+    }
     return true;
 
 }
@@ -404,7 +410,7 @@ bool Engine::calculateProbability(float* gpu_output, const nvinfer1::Dims& dims,
         return false;
     }
     std::vector<float> cpu_output(getSizeByDim(dims) * batchSize);
-    cudaMemcpy(cpu_output.data(), gpu_output, cpu_output.size() * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpyAsync(cpu_output.data(), gpu_output, cpu_output.size() * sizeof(float), cudaMemcpyDeviceToHost, m_cudaStream);
 
     // calculate softmax
     std::transform(cpu_output.begin(), cpu_output.end(), cpu_output.begin(), [](float val) {return std::exp(val);});

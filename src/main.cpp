@@ -23,7 +23,7 @@ int main(int argc, char **argv)
                 //fflush(stdout);
                 set_precision(optarg, config);
                 printf("fp16: %d    |   ", config.FP16);
-                printf("INT8: %d\n", config.INT8);
+                printf("INT8: %d    |   \n", config.INT8);
                 break;
             case 'd':
                 printf("DLA\n");
@@ -61,8 +61,8 @@ int main(int argc, char **argv)
     //const std::string InputImage = "images/cat.jpg";
     //const std::string InputImage = "images/wardrobe.jpg";
     //const std::string InputImage = "images/leopard.jpg";
-    //const std::string InputImage = "images/cheetah.jpg";
-    const std::string InputImage = "images/jaguar2.jpg";
+    const std::string InputImage = "images/cheetah.jpg";
+    //const std::string InputImage = "images/jaguar2.jpg";
     
 
 
@@ -78,6 +78,7 @@ int main(int argc, char **argv)
     //cv::waitKey(0);
     printf("Starting inference\n");
     fflush(stdout);
+    //First iteration takes longer.
     auto t1 = Clock::now();
     succ = engine.inference(img, 1);
     auto t2 = Clock::now();
@@ -96,7 +97,7 @@ int main(int argc, char **argv)
     totalTime = std::chrono::duration_cast<chrono::milliseconds>(t2-t1).count();
     images.clear();
     
-    cout << "Success! Average time per inference was " << totalTime / numberOfIterations << "ms" << endl;
+    cout << "Success! Average time per inference on "<< numberOfIterations <<" was " << totalTime / numberOfIterations << "ms" << endl;
   
     return 0;
 }
