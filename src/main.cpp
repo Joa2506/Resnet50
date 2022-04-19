@@ -1,6 +1,9 @@
 #include <getopt.h>
 #include <opencv2/opencv.hpp>
 #include "Engine.hpp"
+#include <chrono>
+
+typedef std::chrono::high_resolution_clock Clock;
 
 int main(int argc, char **argv)
 {
@@ -37,11 +40,7 @@ int main(int argc, char **argv)
         }
     }
 
-        
-        //DLA
-
-        //Workspace size
-    
+            
     Engine engine(config);
 
     bool succ = engine.build(RESNET);
@@ -55,6 +54,7 @@ int main(int argc, char **argv)
         throw runtime_error("Could not load TRT engine from disk");
     }
     const size_t batchSize = 1;
+    int numberOfIterations = 1000;
     std::vector<cv::Mat> images;
     //const std::string InputImage = "images/turkish_coffee.jpg";
     //const std::string InputImage = "images/golden_retriever.jpg";
@@ -64,22 +64,39 @@ int main(int argc, char **argv)
     //const std::string InputImage = "images/cheetah.jpg";
     const std::string InputImage = "images/jaguar2.jpg";
     
+
+
     auto img = cv::imread(InputImage);
+    cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
+    for (size_t i = 0; i < numberOfIterations; ++i)
+    {
+        images.emplace_back(img);
+    }
+    
     //cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
     //cv::imshow("img",img);
     //cv::waitKey(0);
     printf("Starting inference\n");
     fflush(stdout);
+    auto t1 = Clock::now();
     succ = engine.inference(img, 1);
+    auto t2 = Clock::now();
+    double totalTime = std::chrono::duration_cast<chrono::milliseconds>(t2-t1).count();
+    printf("Time of first: %f\n", totalTime);
     if(!succ)
     {
         throw runtime_error("Could not run inference");
     }
-    if(succ)
+    t1 = Clock::now();
+    for (int i = 0; i < numberOfIterations; ++i)
     {
-        cout << "Inference worked man!" << endl;
+        engine.inference(images[i], 1);
     }
-    printf("Success\n");
-    fflush(stdout);
+    t2 = Clock::now();
+    totalTime = std::chrono::duration_cast<chrono::milliseconds>(t2-t1).count();
+    images.clear();
+    
+    cout << "Success! Average time per inference was " << totalTime / numberOfIterations << "ms" << endl;
+  
     return 0;
 }

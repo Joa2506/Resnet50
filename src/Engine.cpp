@@ -20,6 +20,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/cudaarithm.hpp>
 
+
 Engine::Engine(const Configurations& config) : m_config(config) {}
 
 Engine::~Engine()
@@ -39,6 +40,10 @@ string Engine::serializeEngineName(const Configurations& config)
     if(config.FP16)
     {
         name += ".fp16";
+    }
+    else if(config.INT8)
+    {
+        name += ".int8";
     }
     else
     {
@@ -167,6 +172,28 @@ bool Engine::build(string onnxfilename)
     cout << "Optimization profile added" << endl;
     cout << "Setting max workspace size..." << endl;
     config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, m_config.maxWorkspaceSize);
+
+    if(m_config.FP16)
+    {
+        config->setFlag(BuilderFlag::kFP16);
+    }
+    else if(m_config.INT8)
+    {
+        config->setFlag(BuilderFlag::kINT8);
+    }
+
+    //DLA does not support dynamic dimensions. Thus, for wildcard dimensions, the min, max, and opt values of the profile must be equal. Check optimization profile
+    if(m_config.dlaCore != 0)
+    {
+        if(m_config.dlaCore > 2 || m_config.dlaCore < 0)
+        {
+            cout << "Architecture does not allow more than two DLAs" << endl;
+            return false;
+        }
+        config->setFlag(BuilderFlag::kGPU_FALLBACK);
+        config->setDefaultDeviceType(DeviceType::kDLA);
+    }
+
     cout << "Builder configured successfully" << endl;
     cout << "Making cuda stream..." << endl;
     auto cudaStream = samplesCommon::makeCudaStream();
@@ -336,7 +363,7 @@ bool Engine::inference(cv::Mat &image, int batchSize)
 
 bool Engine::resizeAndNormalize(cv::Mat frame, float* gpu_input, const nvinfer1::Dims& dims)
 {
-    printf("Starting pre processing of image\n");
+    //printf("Starting pre processing of image\n");
     
     cv::cuda::GpuMat gpu_frame;
     // upload image to GPU
@@ -368,7 +395,7 @@ bool Engine::resizeAndNormalize(cv::Mat frame, float* gpu_input, const nvinfer1:
 
 bool Engine::calculateProbability(float* gpu_output, const nvinfer1::Dims& dims, int batchSize)
 {
-    printf("Reading classes file\n");
+    //printf("Reading classes file\n");
 
     auto classes = getClassNames(RESNET_CLASSNAMES);
     if(classes.empty())
@@ -389,9 +416,9 @@ bool Engine::calculateProbability(float* gpu_output, const nvinfer1::Dims& dims,
     // print results
     int i = 0;
     //First is most likely candidate
-    std::cout << "class: " << classes[indices[0]] << endl;
-    std::cout << "class: " << classes[indices[1]] << endl;
-    std::cout << "class: " << classes[indices[2]] << endl;
+    // std::cout << "class: " << classes[indices[0]] << endl;
+    // std::cout << "class: " << classes[indices[1]] << endl;
+    // std::cout << "class: " << classes[indices[2]] << endl;
 
     return true;
 }
