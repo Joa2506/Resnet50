@@ -20,6 +20,7 @@
 using namespace std;
 
 #define RESNET "/usr/src/tensorrt/data/resnet50/ResNet50.onnx"
+#define YOLOV3 "/home/joakim/Dokumenter/TensorRT/Engine/model/yolov3-10.onnx"
 #define RESNET_CLASSNAMES "/usr/src/tensorrt/data/resnet50/class_labels.txt"
 
 
@@ -64,6 +65,9 @@ class Engine
         Dims m_inputDims;
         Dims m_outputDims;
 
+        //Profiler
+        IProfiler * profiler;
+
         //NCHW
         int32_t m_batchSize; //Also known as N
         int32_t m_inputChannel;
@@ -74,7 +78,7 @@ class Engine
     public:
         bool build(string onnxfilename);
         bool loadNetwork();
-        bool inference(cv::Mat &img, int batchSize);
+        bool inference(cv::Mat &img, int batchSize, vector<float> &inferenceTime);
 
         Engine(const Configurations& config);
         ~Engine();
