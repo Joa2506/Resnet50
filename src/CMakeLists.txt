@@ -13,7 +13,7 @@ set(CUDA_TOOLKIT_ROOT_DIR /usr/local/cuda-11.6)
 find_package( OpenCV REQUIRED )
 find_package(CUDA)
 message("-- CUDA version: ${CUDA_VERSION}")
-
+message(${OpenCV_DIR})
 set(
 	CUDA_NVCC_FLAGS
 	${CUDA_NVCC_FLAGS}; 

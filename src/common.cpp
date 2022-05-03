@@ -7,7 +7,6 @@ void print_help()
     printf("Precision:      You can add different precision using -p <PRECISION> | You can choose fp16, fp32 and int8. Remember fp32 is default\n");
     printf("DLA:            You can set the number of DLA cores up to 2 by using -d <DLA_CORES>\n");
     printf("Workspace size: You can set the max workspace size using -s <SIZE>  | warning: Be aware of your GPUs limitation\n");
-    printf("Number of iterations: You can set the number of times to iterate through the pictures by using -n <SIZE> \n");
     exit(2);
 }
 

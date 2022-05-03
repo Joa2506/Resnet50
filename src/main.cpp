@@ -9,12 +9,12 @@ int main(int argc, char **argv)
 {
     Configurations config;
     
-    //Number of iterations to run
-    int numberOfIterations = 100;
+    //Set configurations
   
+    int numberOfIterations = 1000;
     //Precision
     int i;
-    while((i = getopt(argc, argv, "p:d:s:n:h")) != -1)
+    while((i = getopt(argc, argv, "p:d:s:h:n")) != -1)
     {
         switch (i)
         {
@@ -40,12 +40,10 @@ int main(int argc, char **argv)
                 break;
             case 'n':
                 numberOfIterations = atoi(optarg);
-
         }
     }
 
-    vector<float> inferenceTime;
-    
+            
     Engine engine(config);
 
     bool succ = engine.build(RESNET);
@@ -64,9 +62,9 @@ int main(int argc, char **argv)
     //const std::string InputImage = "images/golden_retriever.jpg";
     //const std::string InputImage = "images/cat.jpg";
     //const std::string InputImage = "images/wardrobe.jpg";
-    const std::string InputImage = "images/cheetah.jpg";
-    const std::string InputImage2 = "images/jaguar2.jpg";
-    const std::string InputImage3 = "images/leopard.jpg";
+    const std::string InputImage = "images/leopard.jpg";
+    const std::string InputImage2 = "images/cheetah.jpg";
+    const std::string InputImage3 = "images/jaguar.jpg";
     
 
 
@@ -78,11 +76,11 @@ int main(int argc, char **argv)
     cv::cvtColor(img3, img3, cv::COLOR_BGR2RGB);
     for (size_t i = 0; i < numberOfIterations; ++i)
     {
-        if(i%2 == 0)
+        if(i % 2 == 0)
         {
             images.emplace_back(img2);
         }
-        else if (i % 3 == 0)
+        else if(i % 3)
         {
             images.emplace_back(img3);
         }
@@ -99,7 +97,7 @@ int main(int argc, char **argv)
     fflush(stdout);
     //First iteration takes longer.
     auto t1 = Clock::now();
-    succ = engine.inference(img, 1, inferenceTime);
+    succ = engine.inference(img, 1);
     auto t2 = Clock::now();
     double totalTime = std::chrono::duration_cast<chrono::milliseconds>(t2-t1).count();
     printf("Time of first: %f\n", totalTime);
@@ -108,24 +106,15 @@ int main(int argc, char **argv)
         throw runtime_error("Could not run inference");
     }
     t1 = Clock::now();
-    inferenceTime.clear();
     for (int i = 0; i < numberOfIterations; ++i)
     {
-        engine.inference(images[i], 1, inferenceTime);
+        engine.inference(images[i], 1);
     }
     t2 = Clock::now();
     totalTime = std::chrono::duration_cast<chrono::milliseconds>(t2-t1).count();
     images.clear();
-
-    printf("size %ld\n", inferenceTime.size());
-    float totalInferenceTime = 0;
-    for (size_t i = 0; i < numberOfIterations; ++i)
-    {
-        totalInferenceTime += inferenceTime[i];
-    }
     
-
-    cout << "Average inference time is: " << totalInferenceTime/numberOfIterations << "ms" <<endl;
-    cout << "Average time per inference procedure on "<< numberOfIterations <<" was " << totalTime / numberOfIterations << "ms" << endl;
+    cout << "Success! Average time per inference on "<< numberOfIterations <<" was " << totalTime / numberOfIterations << "ms" << endl;
+  
     return 0;
 }

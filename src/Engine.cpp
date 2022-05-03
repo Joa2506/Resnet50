@@ -308,11 +308,11 @@ bool Engine::loadNetwork()
         cout << "Creating execution context failed" << endl;
         return false;
     }
-    cout << "Creating profiler " << endl;
-    m_context->setProfiler(profiler);
+
     cout << "Execution context was created successfully" << endl;
     cout << "Creating CudaStream..." << endl;
     auto cudaRet = cudaStreamCreate(&m_cudaStream);
+    printf("%d\n", cudaRet);
     if(cudaRet != 0)
     {
         throw std::runtime_error("Unable to create cuda stream");
@@ -321,12 +321,10 @@ bool Engine::loadNetwork()
     return true;
 }
 
-bool Engine::inference(cv::Mat &image, int batchSize, vector<float> &inferenceTime)
+bool Engine::inference(cv::Mat &image, int batchSize)
 {
-    float totalTime;
-    cudaEvent_t start, end;   
-    cudaEventCreate(&start);
-    cudaEventCreate(&end);
+    // cv::imshow("img", image);
+    // cv::waitKey(0);
     vector<nvinfer1::Dims> input_dims;
     vector<nvinfer1::Dims> output_dims;
     //void* buffers[m_engine->getNbBindings()]; //Input and output buffers
@@ -336,42 +334,37 @@ bool Engine::inference(cv::Mat &image, int batchSize, vector<float> &inferenceTi
     {
         auto bindingSize = getSizeByDim(m_engine->getBindingDimensions(i)) * batchSize * sizeof(float);
         cudaMallocAsync(&buffers[i], bindingSize,m_cudaStream);
-        if(m_engine->bindingIsInput(i))
-        {
-            input_dims.emplace_back(m_engine->getBindingDimensions(i));
-        }
-        else
-        {
-            output_dims.emplace_back(m_engine->getBindingDimensions(i));
-        }
+        // if(m_engine->bindingIsInput(i))
+        // {
+        //     input_dims.emplace_back(m_engine->getBindingDimensions(i));
+        // }
+        // else
+        // {
+        //     output_dims.emplace_back(m_engine->getBindingDimensions(i));
+        // }
     }
-    if (input_dims.empty() || output_dims.empty())
-    {
-        std::cerr << "Expect at least one input and one output for network" << endl;
-        return false;
-    }
+    // if (input_dims.empty() || output_dims.empty())
+    // {
+    //     std::cerr << "Expect at least one input and one output for network" << endl;
+    //     return false;
+    // }
 
 
     resizeAndNormalize(image, (float*)buffers[0], m_inputDims);
-    cudaEventRecord(start, m_cudaStream);
     m_context->enqueueV2(buffers.data(), m_cudaStream, nullptr);
-    cudaEventRecord(end, m_cudaStream);
     calculateProbability((float*)buffers[1], m_outputDims, batchSize);
     for (size_t i = 0; i < m_engine->getNbBindings(); i++)
     {
         cudaFreeAsync(buffers[i], m_cudaStream);
     }
     auto status = cudaStreamSynchronize(m_cudaStream);
-    cudaEventElapsedTime(&totalTime, start, end);
-    inferenceTime.emplace_back(totalTime);
-    cout << "Time elapsed of inference: " << totalTime << "ms" <<endl;
     if(status != 0)
     {
         std::cout << "Unable to synchronize cuda stream" << std::endl;
         return false;
     }
     return true;
-    
+
 }
 
 bool Engine::resizeAndNormalize(cv::Mat frame, float* gpu_input, const nvinfer1::Dims& dims)
