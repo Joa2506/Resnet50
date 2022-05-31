@@ -70,12 +70,64 @@ class Engine
         int32_t m_inputHeight;
         int32_t m_inputWidth;
 
+        //Functions and variables for current monitoring
+        string powerRailCPU = "/sys/bus/i2c/drivers/ina3221x/1-0040/iio:device0/in_power1_input";
+        string voltageRailCPU = "/sys/bus/i2c/drivers/ina3221x/1-0040/iio:device0/in_voltage1_input";
+        string currentRailCPU = "/sys/bus/i2c/drivers/ina3221x/1-0040/iio:device0/in_current1_input";
+        //Lists to read power, current and voltage
+        std::vector<int> powerListCPU;
+        std::vector<int> currentListCPU;
+        std::vector<int> voltageListCPU;
+
+
+        string powerRailGPU = "/sys/bus/i2c/drivers/ina3221x/1-0040/iio:device0/in_power0_input";
+        string voltageRailGPU = "/sys/bus/i2c/drivers/ina3221x/1-0040/iio:device0/in_voltage0_input";
+        string currentRailGPU = "/sys/bus/i2c/drivers/ina3221x/1-0040/iio:device0/in_current0_input";
+        //Lists to read power, current and voltage
+        std::vector<int> powerListGPU;
+        std::vector<int> currentListGPU;
+        std::vector<int> voltageListGPU;
+
+        string powerRailSOC = "/sys/bus/i2c/drivers/ina3221x/1-0040/iio:device0/in_power2_input";
+        string voltageRailSOC = "/sys/bus/i2c/drivers/ina3221x/1-0040/iio:device0/in_voltage2_input";
+        string currentRailSOC = "/sys/bus/i2c/drivers/ina3221x/1-0040/iio:device0/in_current2_input";
+        //Lists to read power, current and voltage
+        std::vector<int> powerListSOC;
+        std::vector<int> currentListSOC;
+        std::vector<int> voltageListSOC;
+
+        //files
+        string powerFileSOCFP32 = "outputfiles/powerSOCFP32.txt";
+        string powerFileSOCDLA = "outputfiles/powerSOCDLA.txt";
+        string powerFileSOCFP16 = "outputfiles/powerSOCFP16.txt";
+
+        string powerFileCPUFP32 = "outputfiles/powerCPUFP32.txt";
+        string powerFileCPUDLA = "outputfiles/powerCPUDLA.txt";
+        string powerFileCPUFP16 = "outputfiles/powerCPUFP16.txt";
+
+        string powerFileGPUFP32 = "outputfiles/powerGPUFP32.txt";
+        string powerFileGPUDLA = "outputfiles/powerGPUDLA.txt";
+        string powerFileGPUFP16 = "outputfiles/powerGPUFP16.txt";
+
+        string voltageFile = "voltage.txt";
+        string currentFile = "current.txt";
+
+        //Average time
+        //functions
+        bool powerMonitor();
+        bool powerMonitorGPU();
+        bool powerMonitorCPU();
+        
         
     public:
         bool build(string onnxfilename);
         bool loadNetwork();
         bool inference(cv::Mat &img, int batchSize);
+        bool writeToListsPower();
+        bool writeToListsCurrent();
+        bool writeToListsVoltage();
 
+        void calculate_averages(double time, int numberOfIterations);
         Engine(const Configurations& config);
         ~Engine();
 

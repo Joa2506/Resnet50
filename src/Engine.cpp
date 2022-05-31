@@ -20,7 +20,6 @@
 #include <opencv2/core.hpp>
 #include <opencv2/cudaarithm.hpp>
 
-
 Engine::Engine(const Configurations& config) : m_config(config) {}
 
 Engine::~Engine()
@@ -184,12 +183,12 @@ bool Engine::build(string onnxfilename)
     }
 
     //DLA does not support dynamic dimensions. Thus, for wildcard dimensions, the min, max, and opt values of the profile must be equal. Check optimization profile
-    if((m_config.dlaCore == 0 || m_config.dlaCore == 1 ) && (m_config.FP16 || m_config.INT8))
+    if((m_config.dlaCore == 0 || m_config.dlaCore == 1 ) /*&& (m_config.FP16 || m_config.INT8)*/)
     {
-        
+        printf("Setting dlacore %d\n", m_config.dlaCore);
         config->setFlag(BuilderFlag::kGPU_FALLBACK);
         config->setDefaultDeviceType(DeviceType::kDLA);
-        if(m_config.dlaCore == 1)
+        if(m_config.dlaCore == 0)
         {
             config->setDLACore(0);
         }
@@ -201,8 +200,8 @@ bool Engine::build(string onnxfilename)
     }
 
     cout << "Setting max workspace size..." << endl;
-    config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, m_config.maxWorkspaceSize);
-
+    //config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, m_config.maxWorkspaceSize);
+    config->setMaxWorkspaceSize(m_config.maxWorkspaceSize);
     cout << "Builder configured successfully" << endl;
     cout << "Making cuda stream..." << endl;
     auto cudaStream = samplesCommon::makeCudaStream();
@@ -333,7 +332,8 @@ bool Engine::inference(cv::Mat &image, int batchSize)
     for (size_t i = 0; i < m_engine->getNbBindings(); ++i)
     {
         auto bindingSize = getSizeByDim(m_engine->getBindingDimensions(i)) * batchSize * sizeof(float);
-        cudaMallocAsync(&buffers[i], bindingSize,m_cudaStream);
+        //cudaMallocAsync(&buffers[i], bindingSize,m_cudaStream);
+        cudaMalloc(&buffers[i], bindingSize);
         // if(m_engine->bindingIsInput(i))
         // {
         //     input_dims.emplace_back(m_engine->getBindingDimensions(i));
@@ -351,11 +351,14 @@ bool Engine::inference(cv::Mat &image, int batchSize)
 
 
     resizeAndNormalize(image, (float*)buffers[0], m_inputDims);
-    m_context->enqueueV2(buffers.data(), m_cudaStream, nullptr);
+    //m_context->enqueueV2(buffers.data(), m_cudaStream, nullptr);
+    m_context->executeV2(buffers.data());
+    powerMonitor();
     calculateProbability((float*)buffers[1], m_outputDims, batchSize);
     for (size_t i = 0; i < m_engine->getNbBindings(); i++)
     {
-        cudaFreeAsync(buffers[i], m_cudaStream);
+        //cudaFreeAsync(buffers[i], m_cudaStream);
+        cudaFree(&buffers[i]);
     }
     auto status = cudaStreamSynchronize(m_cudaStream);
     if(status != 0)
@@ -453,4 +456,179 @@ size_t Engine::getSizeByDim(const nvinfer1::Dims& dims)
         size *= dims.d[i];
     }
     return size;
+}
+
+bool Engine::powerMonitor()
+{
+
+    string lineSOC, lineCPU, lineGPU;
+  
+    ifstream fileSOC(powerRailSOC);
+    getline(fileSOC, lineSOC);
+    powerListSOC.emplace_back(stoi(lineSOC));
+    //printf("%d\n", powerListSOC[0]);
+    fileSOC.close();
+   
+    ifstream fileCPU(powerRailCPU);
+    getline(fileCPU, lineCPU);
+    powerListCPU.emplace_back(stoi(lineCPU));
+    //printf("%d\n", powerListSOC[0]);
+    fileCPU.close();
+
+    ifstream fileGPU(powerRailGPU);
+    getline(fileGPU, lineGPU);
+    powerListGPU.emplace_back(stoi(lineGPU));
+    //printf("%d\n", powerListSOC[0]);
+    fileGPU.close();
+    return true;
+}
+
+bool Engine::writeToListsPower()
+{
+    //Write to power to SOC
+
+    if(m_config.FP16 && (m_config.dlaCore == -1))
+    {
+        //SOC
+        ofstream outputfileSOC(powerFileSOCFP16);
+        std::ostream_iterator<int> output_iteratorSOC(outputfileSOC, "\n");
+        std::copy(powerListSOC.begin(), powerListSOC.end(), output_iteratorSOC);
+        
+        //CPU
+        ofstream outputfileCPU(powerFileCPUFP16);
+        std::ostream_iterator<int> output_iteratorCPU(outputfileCPU, "\n");
+        std::copy(powerListCPU.begin(), powerListCPU.end(), output_iteratorCPU);
+        
+        //GPU
+        ofstream outputfileGPU(powerFileGPUFP16);
+        std::ostream_iterator<int> output_iteratorGPU(outputfileGPU, "\n");
+        std::copy(powerListGPU.begin(), powerListGPU.end(), output_iteratorGPU);
+
+    }
+    else if(m_config.FP16 && (m_config.dlaCore == 1))
+    {
+        //SOC
+        ofstream outputfileSOC(powerFileSOCDLA);
+        std::ostream_iterator<int> output_iteratorSOC(outputfileSOC, "\n");
+        std::copy(powerListSOC.begin(), powerListSOC.end(), output_iteratorSOC);
+
+        //CPU
+        ofstream outputfileCPU(powerFileCPUDLA);
+        std::ostream_iterator<int> output_iteratorCPU(outputfileCPU, "\n");
+        std::copy(powerListCPU.begin(), powerListCPU.end(), output_iteratorCPU);
+
+        //GPU
+        ofstream outputfileGPU(powerFileGPUDLA);
+        std::ostream_iterator<int> output_iteratorGPU(outputfileGPU, "\n");
+        std::copy(powerListGPU.begin(), powerListGPU.end(), output_iteratorGPU);
+    }
+    else
+    {
+        //SOC
+        ofstream outputfileSOC(powerFileSOCFP32);
+        std::ostream_iterator<int> output_iteratorSOC(outputfileSOC, "\n");
+        std::copy(powerListSOC.begin(), powerListSOC.end(), output_iteratorSOC);
+
+        //CPU
+        ofstream outputfileCPU(powerFileCPUFP32);
+        std::ostream_iterator<int> output_iteratorCPU(outputfileCPU, "\n");
+        std::copy(powerListCPU.begin(), powerListCPU.end(), output_iteratorCPU);
+
+        //GPU
+        ofstream outputfileGPU(powerFileGPUFP32);
+        std::ostream_iterator<int> output_iteratorGPU(outputfileGPU, "\n");
+        std::copy(powerListGPU.begin(), powerListGPU.end(), output_iteratorGPU);
+    }
+
+
+
+    return true;
+}
+void Engine::calculate_averages(double time, int numberOfIterations)
+{
+    //Average power
+    ofstream outSoC, outCPU, outGPU, outTime;
+    int sumGPU = 0, sumCPU = 0, sumSoC = 0;
+
+    
+
+    if(m_config.FP16 && (m_config.dlaCore == -1))
+    {
+    //Average time
+
+        string avgTime = "outputfiles/averages/avg_time_ms_FP16_" + to_string(numberOfIterations) + "_itr_" + to_string(m_config.maxWorkspaceSize) + "_bytes" + ".txt";
+        string avgSoc = "outputfiles/averages/avg_mw_SoC_FP16_" + to_string(numberOfIterations) + "_itr_" + to_string(m_config.maxWorkspaceSize) + "_bytes" + ".txt";
+        string avgGPU = "outputfiles/averages/avg_mw_GPU_FP16_" + to_string(numberOfIterations) + "_itr_" + to_string(m_config.maxWorkspaceSize) + "_bytes" + ".txt";
+        string avgCPU = "outputfiles/averages/avg_mw_CPU_FP16_" + to_string(numberOfIterations) + "_itr_" + to_string(m_config.maxWorkspaceSize) + "_bytes" + ".txt";
+        outTime.open(avgTime, std::ios::app);
+        outTime << time << endl;
+        //SOC
+        outSoC.open(avgSoc, std::ios::app);
+        outGPU.open(avgGPU, std::ios::app);
+        outCPU.open(avgCPU, std::ios::app);
+
+        for(int i; i < numberOfIterations; ++i)
+        {
+            sumGPU += powerListGPU[i];
+            sumCPU += powerListCPU[i];
+            sumSoC += powerListSOC[i];
+        }
+        outSoC << sumSoC / numberOfIterations << endl;
+        outCPU << sumCPU / numberOfIterations << endl;
+        outGPU << sumGPU / numberOfIterations << endl;
+
+    }
+    //fp16 with DLA
+    else if(m_config.FP16 && (m_config.dlaCore == 1))
+    {
+            //Average time
+
+        string avgTime = "outputfiles/averages/avg_time_ms_FP16_DLA_" + to_string(numberOfIterations) + "_itr_" + to_string(m_config.maxWorkspaceSize) + "_bytes" + ".txt";
+        string avgSoc = "outputfiles/averages/avg_mw_SoC_FP16_DLA_" + to_string(numberOfIterations) + "_itr_" + to_string(m_config.maxWorkspaceSize) + "_bytes" + ".txt";
+        string avgGPU = "outputfiles/averages/avg_mw_GPU_FP16_DLA_" + to_string(numberOfIterations) + "_itr_" + to_string(m_config.maxWorkspaceSize) + "_bytes" + ".txt";
+        string avgCPU = "outputfiles/averages/avg_mw_CPU_FP16_DLA_" + to_string(numberOfIterations) + "_itr_" + to_string(m_config.maxWorkspaceSize) + "_bytes" + ".txt";
+        outTime.open(avgTime, std::ios::app);
+        outTime << time << endl;
+        //SOC
+        outSoC.open(avgSoc, std::ios::app);
+        outGPU.open(avgGPU, std::ios::app);
+        outCPU.open(avgCPU, std::ios::app);
+
+        for(int i; i < numberOfIterations; ++i)
+        {
+            sumGPU += powerListGPU[i];
+            sumCPU += powerListCPU[i];
+            sumSoC += powerListSOC[i];
+        }
+        outSoC << sumSoC / numberOfIterations << endl;
+        outCPU << sumCPU / numberOfIterations << endl;
+        outGPU << sumGPU / numberOfIterations << endl;
+
+    }
+    //fp32
+    else
+    {
+        //Average time
+        string avgTime = "outputfiles/averages/avg_time_ms_FP32_" + to_string(numberOfIterations) + "_itr_" + to_string(m_config.maxWorkspaceSize) + "_bytes" + ".txt";
+        string avgSoc = "outputfiles/averages/avg_mw_SoC_FP32_" + to_string(numberOfIterations) + "_itr_" + to_string(m_config.maxWorkspaceSize) + "_bytes" + ".txt";
+        string avgGPU = "outputfiles/averages/avg_mw_GPU_FP32_" + to_string(numberOfIterations) + "_itr_" + to_string(m_config.maxWorkspaceSize) + "_bytes" + ".txt";
+        string avgCPU = "outputfiles/averages/avg_mw_CPU_FP32_" + to_string(numberOfIterations) + "_itr_" + to_string(m_config.maxWorkspaceSize) + "_bytes" + ".txt";
+        outTime.open(avgTime, std::ios::app);
+        outTime << time << endl;
+        //SOC
+        outSoC.open(avgSoc, std::ios::app);
+        outGPU.open(avgGPU, std::ios::app);
+        outCPU.open(avgCPU, std::ios::app);
+
+        for(int i; i < numberOfIterations; ++i)
+        {
+            sumGPU += powerListGPU[i];
+            sumCPU += powerListCPU[i];
+            sumSoC += powerListSOC[i];
+        }
+        outSoC << sumSoC / numberOfIterations << endl;
+        outCPU << sumCPU / numberOfIterations << endl;
+        outGPU << sumGPU / numberOfIterations << endl;
+    }
+
 }

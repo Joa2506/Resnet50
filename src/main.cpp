@@ -14,7 +14,7 @@ int main(int argc, char **argv)
     int numberOfIterations = 1000;
     //Precision
     int i;
-    while((i = getopt(argc, argv, "p:d:s:h:n")) != -1)
+    while((i = getopt(argc, argv, "p:d:s:h:n:")) != -1)
     {
         switch (i)
         {
@@ -28,6 +28,7 @@ int main(int argc, char **argv)
                 break;
             case 'd':
                 printf("DLA\n");
+                fflush(stdout);
                 set_dla(atoi(optarg), config);
                 printf("DLA cores %d\n", config.dlaCore);
                 break;
@@ -39,7 +40,9 @@ int main(int argc, char **argv)
                 print_help();
                 break;
             case 'n':
+                printf("%d\n", atoi(optarg));
                 numberOfIterations = atoi(optarg);
+                break;
         }
     }
 
@@ -100,7 +103,7 @@ int main(int argc, char **argv)
     succ = engine.inference(img, 1);
     auto t2 = Clock::now();
     double totalTime = std::chrono::duration_cast<chrono::milliseconds>(t2-t1).count();
-    printf("Time of first: %f\n", totalTime);
+    printf("Time of first: %fms\n", totalTime);
     if(!succ)
     {
         throw runtime_error("Could not run inference");
@@ -113,8 +116,9 @@ int main(int argc, char **argv)
     t2 = Clock::now();
     totalTime = std::chrono::duration_cast<chrono::milliseconds>(t2-t1).count();
     images.clear();
-    
+
     cout << "Success! Average time per inference on "<< numberOfIterations <<" was " << totalTime / numberOfIterations << "ms" << endl;
-  
+    engine.writeToListsPower();
+    engine.calculate_averages(totalTime/numberOfIterations, numberOfIterations);
     return 0;
 }
